@@ -1,0 +1,699 @@
+---
+title: "Daylio Moods"
+output: html_notebook
+---
+
+```{r}
+require(skimr)
+require(dplyr)
+require(ggplot2)
+require(bbplot)
+require(readr)
+require(ggcal)
+require(corrplot)
+require(parsedate)
+require(lubridate)
+require(tibble)
+```
+
+
+```{r}
+setwd("~/Development/daylio-moods")
+df <- read_csv("~/Development/daylio-moods/data/df.csv")
+```
+
+
+```{r}
+skim(df)
+```
+
+# Overview
+```{r}
+# Number of activities
+# Removed the eight non-activities columns
+ncol(df) - 8
+```
+
+```{r}
+# contingency table
+colSums(df[,9:ncol(df) - 1])
+
+t <- data.frame(frequency = colSums(df[,9:ncol(df) - 1]))
+t <- tibble::rownames_to_column(t, "activity") %>%
+  arrange(desc(frequency))
+```
+
+```{r}
+# Figure 5
+p <- ggplot(t, aes(x=reorder(activity, -frequency), y=frequency)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_brewer(palette='Set2') +
+  labs(title="My activies and their frequency count",
+       subtitle = "From a total of 44 unique activities") +
+  xlab('Activity') + ylab('Frequency count') +
+  bbc_style() +
+  geom_hline(yintercept = mean(t$frequency), linetype='dashed') +
+  annotate("text", x = "travel", y = mean(t$frequency), label = sprintf("Mean: %.2f", mean(t$frequency)), vjust = -0.5) +
+  geom_hline(yintercept = median(t$frequency), linetype='dotted') +
+    annotate("text", x = "travel", y = median(t$frequency), label = sprintf("Median: %.2f", median(t$frequency)), vjust = -0.5) +
+  theme(axis.title = element_text(size = 16), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_5.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# Activity in percentage
+t$percentage <- (t$frequency * 100 )/ sum(t$frequency)
+```
+
+```{r}
+# Pre-allocate the vector
+means <- numeric(length(colnames(df[,9:ncol(df) - 1])))
+sd <- numeric(length(colnames(df[,9:ncol(df) - 1])))
+
+i <- 1
+for (col in colnames(df[,9:ncol(df) - 1])){
+  print(mean(df$mood_score[df[[col]]==1]))
+  means[i] <- mean(df$mood_score[df[[col]]==1])
+  sd[i] <- sd(df$mood_score[df[[col]]==1])
+  i <- i + 1
+}
+
+mean.mood.per.category <- data.frame(activity = colnames(df[,9:ncol(df) - 1]), mean_mood = means)
+sd.mood.per.category <- data.frame(activity = colnames(df[,9:ncol(df) - 1]), sd_mood = sd)
+t <- merge(t, mean.mood.per.category)
+t <- merge(t, sd.mood.per.category)
+
+# Next: merge the table with t and draw the same plot but colorcode the mood
+
+
+# Test it
+# do this for each column
+mean(df$mood_score[df$Ariel==1])
+```
+
+```{r}
+# Figure 6
+p <- ggplot(t, aes(x=reorder(activity, mean_mood), y=frequency)) +
+  geom_bar(stat = 'identity', aes(fill = mean_mood)) +
+  scale_fill_gradient(low = "orange", high = "blue", na.value = NA, name = 'Average mood score') +
+  labs(title="Activities frequency with average mood score",
+       subtitle = "With color coded average mood score. Where \"5.0\" is the best (or happier) mood.") +
+  xlab('Activity') + ylab('Frequency') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+        legend.position = 'top',
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 14),
+        legend.spacing.y = unit(0.5, 'cm'),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(25,10,10,10)) +
+  guides(fill = guide_colourbar(barwidth = 10))
+print(p)
+ggsave(p, filename = '../plots/figure_6.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# Figure 7
+p <- ggplot(t, aes(x=reorder(activity, sd_mood), y=frequency)) +
+  geom_bar(stat = 'identity', aes(fill = sd_mood)) +
+  scale_fill_gradient(low = "orange", high = "blue", name = "Mood's standard deviation score") +
+  labs(title="Activities frequency with the mood's standard deviations score",
+       subtitle = "With color coded standard deviations") +
+  xlab('Activity') + ylab('Frequency') +
+  bbc_style() +
+  geom_vline(xintercept = 41.5, linetype='dashed') +
+  annotate("text", x = 43, y = 125, angle = 90,
+           label = "There are no standard deviations for these categories because there's only one entry of each.") +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+        legend.position = 'top',
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 12),
+        legend.spacing.y = unit(0.5, 'cm')) +
+  guides(fill = guide_colourbar(barwidth = 10))
+print(p)
+ggsave(p, filename = '../plots/figure_7.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# Mood's score chart
+t <- data.frame(frequency = colSums(df[,9:ncol(df) - 1]))
+t <- tibble::rownames_to_column(t, "activity") %>%
+  arrange(desc(frequency))
+```
+
+
+```{r}
+# Figure 3
+moods <- as.data.frame(table(df$mood_label))
+colnames(moods) <- c('mood', 'frequency')
+
+p <- ggplot(moods, aes(x=reorder(mood, -frequency), y=frequency)) +
+  geom_bar(stat = 'identity') +
+  labs(title="Moods frequency",
+       subtitle = "Where \"rad\" is the best possible mood and \"bad\" is the worse") +
+  xlab('Activity') + ylab('Frequency') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0))) 
+print(p)
+ggsave(p, filename = '../plots/figure_3.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+
+
+```{r}
+#Influence in mood
+moods.to.check <- c('friends', 'gaming', 'writing', 'exploring', 'lockdown covid-19', 'F1', 'Pokemon!', 'fucking Mac', 'napping',
+                    'sick')
+
+activity.to.check <- character(length(moods.to.check))
+mood.with.activity <- numeric(length(moods.to.check))
+mood.without.activity <- numeric(length(moods.to.check))
+
+
+i <- 1
+for (mood in moods.to.check) {
+  activity.to.check[i] <- mood
+  mood.with.activity[i] <- mean(df[df[[mood]] == 1,]$mood_score)
+  mood.without.activity[i] <- mean(df[df[[mood]] == 0,]$mood_score)
+  i <- i + 1
+}
+
+influences <- data.frame(activity = activity.to.check, with_activity = mood.with.activity, without_activity = mood.without.activity)
+influences$difference <- influences$with_activity - influences$without_activity
+
+# find the table at https://docs.google.com/spreadsheets/d/16KAXCGM8pbI7giqTTdWhO93vaOuDPScBP6kZjj_roUY/edit#gid=0
+```
+
+
+```{r}
+# Figure 8.
+p <- ggplot(influences, aes(x=reorder(activity, difference), y=difference)) +
+  geom_bar(stat = 'identity', aes(fill = difference)) +
+  scale_fill_gradient(low = "orange", high = "blue", name = "Difference") +
+  labs(title="Average mood score difference when an activity is and isn't present",
+       subtitle = "How an activity influences the mood") +
+  xlab('Activity') + ylab('Difference') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0), size = 14),
+        axis.title.x = element_text(size = 14),
+        legend.position = 'top',
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 12),
+        legend.spacing.y = unit(0.5, 'cm'),
+        axis.text.x = element_text(angle = 0, hjust = 1, size = 12),
+        plot.title = element_text(size = 22)) +
+  guides(fill = guide_colourbar(barwidth = 10)) +
+  expand_limits(y = 1)
+print(p)
+ggsave(p, filename = '../plots/figure_8.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+
+```{r}
+## Average mood when there's no activity present
+df.with.sum.activities <- df
+df.with.sum.activities$number_activities <- rowSums(df[,9:ncol(df) - 1])
+
+df.with.sum.activities %>%
+  filter(number_activities == 0) %>%
+  summarise(m = mean(mood_score))
+```
+
+
+```{r}
+# Longest streak
+
+sequences <- rle(df$mood_label)
+meh.sequences <- which(sequences$values == 'good')
+max(sequences$lengths[meh.sequences])
+
+label.sequence <- character(length(unique(df$mood_label)))
+max.label.sequence <- character(length(unique(df$mood_label)))
+
+i <- 1
+for (label in unique(df$mood_label)) {
+  sequences <- rle(df$mood_label)
+  meh.sequences <- which(sequences$values == label)
+  
+  label.sequence[i] <- label
+  max.label.sequence[i] <- max(sequences$lengths[meh.sequences])
+  i <- i + 1
+}
+
+sequences.df <- data.frame(mood_label = label.sequence, max_sequence = as.numeric(max.label.sequence))
+
+# https://docs.google.com/spreadsheets/d/16KAXCGM8pbI7giqTTdWhO93vaOuDPScBP6kZjj_roUY/edit#gid=1090192501
+```
+
+```{r}
+# Plot this
+p <- ggplot(sequences.df, aes(x=reorder(mood_label, -max_sequence), y=max_sequence)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_brewer(palette='Set2') +
+  labs(title="Longest consecutive sequence by mood",
+       subtitle = "") +
+  xlab('Mood') + ylab('Longest consecutive sequence') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.position = 'none')
+print(p)
+```
+
+
+```{r}
+# Most common pair
+activity.counts <-add_count(df[,9:ncol(df) - 1], df[,9:ncol(df) - 1])
+activity.counts$number_activities <- rowSums(activity.counts[,1:ncol(df[,9:ncol(df) - 1])])
+
+## Days without activity
+nrow(activity.counts[activity.counts$number_activities == 0,])
+table(activity.counts$number_activities)
+```
+
+```{r}
+activity.counts <- activity.counts[activity.counts$number_activities > 1 & activity.counts$n > 1,]
+activity.counts <- unique(activity.counts)
+
+ # Good meal and friends (23), writing and reading (11), friends and drinking (10), traveling and exploring (10), friends and Ariel (10), photography, exploring, and Ariel (6), good meals, drinking, and Ariel (5)
+
+# Most unique combination: shopping, good meal, gaming, friends, computer, cleaning, Ariel
+```
+
+```{r}
+## Calendar of top activities
+df.for.calendar <- df %>%
+  select(date, friends, Ariel, gaming, writing, exploring, `good meal`, drinking)
+
+
+df.for.calendar$friends_bool <- ifelse(df.for.calendar$friends > 0, TRUE, FALSE)
+df.for.calendar$gaming_bool <- ifelse(df.for.calendar$gaming > 0, TRUE, FALSE)
+df.for.calendar$writing_bool <- ifelse(df.for.calendar$writing > 0, TRUE, FALSE)
+df.for.calendar$goodmean_bool <- ifelse(df.for.calendar$`good meal` > 0, TRUE, FALSE)
+df.for.calendar$drinking_bool <- ifelse(df.for.calendar$drinking > 0, TRUE, FALSE)
+df.for.calendar$ariel_bool <- ifelse(df.for.calendar$Ariel > 0, TRUE, FALSE)
+```
+
+
+```{r}
+# Figure 9
+p <- ggcal(df.for.calendar$date, df.for.calendar$friends_bool) +
+  ggtitle("Days with \"friends\" activity") +
+  scale_fill_manual(name = "Friends", labels = c("No Friends", "Friends"), values=c("TRUE"="steelblue", "FALSE"="lightsteelblue"),
+                    na.translate=FALSE) +
+    theme(axis.title = element_text(size = 24), 
+        plot.margin = unit(c(1.0,1.5,0.5,1.0), 'cm'),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank()) 
+print(p)
+ggsave(p, filename = '../plots/figure_9.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+table(df[df$friends == 1,]$weekday_label)
+```
+
+```{r}
+# Figure 10
+p <- ggcal(df.for.calendar$date, df.for.calendar$writing_bool) +
+  ggtitle("Days with \"writing\" activity") +
+  scale_fill_manual(name = "Writing", labels = c("No Writing", "Writing"), values=c("TRUE"="steelblue", "FALSE"="lightsteelblue"),
+                    na.translate=FALSE) +
+    theme(axis.title = element_text(size = 24), 
+        plot.margin = unit(c(1.0,1.5,0.5,1.0), 'cm'),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank()) 
+print(p)
+```
+
+```{r}
+table(df[df$writing == 1,]$weekday_label)
+```
+
+
+
+```{r}
+p <- ggcal(df.for.calendar$date, df.for.calendar$gaming_bool) +
+  ggtitle("Days with \"gaming\" activity") +
+  scale_fill_manual(name = "Writing", labels = c("No Gaming", "Gaming"), values=c("TRUE"="steelblue", "FALSE"="lightsteelblue"),
+                    na.translate=FALSE) +
+    theme(axis.title = element_text(size = 24), 
+        plot.margin = unit(c(1.0,1.5,0.5,1.0), 'cm'),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank()) 
+print(p)
+```
+```{r}
+table(df[df$gaming == 1,]$weekday_label)
+```
+
+
+```{r}
+p <- ggcal(df.for.calendar$date, df.for.calendar$goodmean_bool) +
+  ggtitle("Days with \"good meal\" activity") +
+  scale_fill_manual(name = "Good Meal", labels = c("No Good Meal", "Good Meal"), values=c("TRUE"="steelblue", "FALSE"="lightsteelblue"),
+                    na.translate=FALSE) +
+    theme(axis.title = element_text(size = 24), 
+        plot.margin = unit(c(1.0,1.5,0.5,1.0), 'cm'),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank()) 
+print(p)
+```
+
+```{r}
+table(df[df$`good meal` == 1,]$weekday_label)
+```
+
+```{r}
+p <- ggcal(df.for.calendar$date, df.for.calendar$drinking_bool) +
+  ggtitle("Days with \"drinking\" activity") +
+  scale_fill_manual(name = "Drinking", labels = c("No Drinking", "Drinking"), values=c("TRUE"="steelblue", "FALSE"="lightsteelblue"),
+                    na.translate=FALSE) +
+    theme(axis.title = element_text(size = 24), 
+        plot.margin = unit(c(1.0,1.5,0.5,1.0), 'cm'),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank()) 
+print(p)
+```
+```{r}
+table(df[df$drinking == 1,]$weekday_label)
+```
+
+```{r}
+p <- ggcal(df.for.calendar$date, df.for.calendar$ariel_bool) +
+  ggtitle("Days with \"Ariel\" activity") +
+  scale_fill_manual(name = "Ariel", labels = c("No Ariel", "Ariel"), values=c("TRUE"="steelblue", "FALSE"="lightsteelblue"),
+                    na.translate=FALSE) +
+    theme(axis.title = element_text(size = 24), 
+        plot.margin = unit(c(1.0,1.5,0.5,1.0), 'cm'),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank()) 
+print(p)
+```
+
+
+
+```{r}
+skim(df.with.hour$hour)
+```
+
+
+```{r}
+## Correlation
+rad <- df[df$mood_score == 5,]
+cor(rad$mood_score, rad$friends)
+```
+
+```{r}
+# Figure 10
+# TODO: Make it prettier https://www.displayr.com/how-to-create-a-correlation-matrix-in-r/
+correlations <- cor(df[,9:ncol(df) - 1])
+corrplot(cor(df[,9:ncol(df) - 1]),
+         method = 'square',
+         title = "Correlation matrix of the activities",
+         tl.col = 'black')
+```
+
+```{r}
+min(correlations)
+max(correlations)
+correlations.df <- data.frame(correlations)
+```
+
+## Time
+```{r}
+# Figure 4
+# Boxplot of time entries (hour and minute)
+df.with.hour <- df
+df.with.hour$posixct <- parsedate::parse_date(df.with.hour$datetime)
+df.with.hour$hour <- hour(df.with.hour$posixct)
+
+p <- ggplot(df.with.hour, aes(x=hour)) +
+  geom_histogram(bins = 24) +
+  labs(title="Mood login hours (in 24-hour format)",
+       subtitle = "From a total of 1031 logins") +
+  xlab('Hour') + ylab('Frequency') +
+  bbc_style() +
+  geom_vline(xintercept = median(df.with.hour$hour), linetype='dotted', size=1) +
+    annotate("text", y = 350, x = median(df.with.hour$hour), label = sprintf("Median: %.2f", median(df.with.hour$hour)), hjust = 1.5, size = 6) +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_4.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+## Timeline of mood
+to.export <- data.frame(ds = df$datetime, y = df$mood_score)
+write.table(to.export, file = 'prophet_timeseries_data.csv', row.names = FALSE, sep = ',')
+```
+
+```{r}
+# Activities per mood
+moods.and.activities <- df[,9:ncol(df) - 1]
+moods.and.activities$mood_label <- df$mood_label
+```
+
+```{r}
+# this is kinda good
+# this is an example and won't be used in the final report
+moods.and.activities %>%
+  select(mood_label, Ariel) %>%
+  group_by(mood_label) %>%
+  summarise(n = n(), sum = sum(Ariel)) %>%
+  mutate(freq = sum / n)
+```
+
+```{r}
+# How to read this? This means that for example, 9% of my bad days had Ariel activity
+moods.and.activities.gb <- moods.and.activities %>%
+  group_by(mood_label) %>%
+  summarise_all(~ (sum(.) * 100) / length(.))
+```
+
+```{r}
+moods.and.activities.gb <- remove_rownames(moods.and.activities.gb)
+moods.and.activities.gb <- column_to_rownames(moods.and.activities.gb, var = 'mood_label')
+moods.and.activities.gb.t <- t(moods.and.activities.gb) 
+moods.and.activities.gb.t <- as.data.frame(moods.and.activities.gb.t)
+```
+
+```{r}
+# Most common activity per mood
+common.activity.mood.which <- data.frame(apply(moods.and.activities.gb,2,which.max))
+common.activity.mood.which <- rownames_to_column(common.activity.mood.which, var = 'activity')
+colnames(common.activity.mood.which) <- c('activity', 'mood')
+
+common.activity.mood.value <- data.frame(apply(moods.and.activities.gb, 2, max))
+common.activity.mood.value <- rownames_to_column(common.activity.mood.value, var = 'activity')
+colnames(common.activity.mood.value) <- c('activity', 'score')
+
+common.activity.mood <- merge(common.activity.mood.which, common.activity.mood.value)
+```
+
+## Moods
+```{r}
+# Rad
+p <- ggplot(common.activity.mood[common.activity.mood$mood == 4,], aes(x=reorder(activity, -score),
+                                                                       y=score)) +
+  geom_bar(stat = 'identity', fill = '#002c73') +
+  labs(title='Percentage of \"rad\" days with these activities',
+       subtitle = "") +
+  xlab('Activity') + ylab('Percentage') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_16.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# Figure 18
+# The indexes correspond to the column names of moods.and.activities.gb.t
+p <- ggplot(common.activity.mood[common.activity.mood$mood == 2,], aes(x=reorder(activity, -score),
+                                                                       y=score)) +
+  geom_bar(stat = 'identity', fill='#4287f5') +
+  labs(title='Percentage of \"good\" days that has these activities',
+       subtitle = "") +
+  xlab('Activity') + ylab('Percentage') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_18.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# The indexes correspond to the column names of moods.and.activities.gb.t
+p <- ggplot(common.activity.mood[common.activity.mood$mood == 3,], aes(x=reorder(activity, -score),
+                                                                       y=score)) +
+  geom_bar(stat = 'identity', fill = '#016119') +
+  labs(title='Percentage of \"meh\" days that has these activities',
+       subtitle = "") +
+  xlab('Activity') + ylab('Percentage') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 0, hjust = 1),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_20.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# The indexes correspond to the column names of moods.and.activities.gb.t
+p <- ggplot(common.activity.mood[common.activity.mood$mood == 1,], aes(x=reorder(activity, -score),
+                                                                       y=score)) +
+  geom_bar(stat = 'identity', fill = '#e03a3a') +
+  labs(title='Percentage of \"bad\" days that has these activities',
+       subtitle = "") +
+  xlab('Activity') + ylab('Percentage') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 0, hjust = 1),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_22.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# Longest chain of days with given mood
+# Bad 2021-07-09 to 2021-07-10 and 2020-04-21 to 2020-04-22
+# Meh 2020-03-19 to 2020-03-25 (7 days)
+# Good 2021-03-11 to 2021-04-02 (24 days)
+# Rad 2021-08-21 to 2021-09-2 (14 days)
+```
+
+```{r}
+# Most common day for mood
+moods.per.day <- df %>%
+  select(mood_label, weekday_label) %>%
+  group_by(mood_label, weekday_label) %>%
+  summarize(n = n())
+```
+
+```{r}
+# Reorder factors so we can plot them starting from Monday
+moods.per.day$weekday_label <- factor(moods.per.day$weekday_label,
+                                      levels = c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'))
+```
+
+```{r}
+# Do charts for each mood from moods.per.day
+p <- ggplot(moods.per.day[moods.per.day$mood_label == 'rad',], aes(x=weekday_label, y=n)) +
+  geom_bar(stat = 'identity', fill = '#002c73') +
+  labs(title="Number of entries of the mood \"rad\" by weekday",
+       subtitle = "From a total of 201 entries") +
+  xlab('Weekday') + ylab('Number of entries') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_15.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# Figure 17
+p <- ggplot(moods.per.day[moods.per.day$mood_label == 'good',], aes(x=weekday_label, y=n)) +
+  geom_bar(stat = 'identity', fill='#4287f5') +
+  labs(title="Number of entries of the mood \"good\" by weekday",
+       subtitle = "From a total of 625 entries") +
+  xlab('Weekday') + ylab('Number of entries') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_17.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+p <- ggplot(moods.per.day[moods.per.day$mood_label == 'meh',], aes(x=weekday_label, y=n)) +
+  geom_bar(stat = 'identity', fill = '#016119') +
+  labs(title="Number of entries of the mood \"meh\" by weekday",
+       subtitle = "From a total of 194 entries") +
+  xlab('Weekday') + ylab('Number of entries') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_19.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+```{r}
+# Add the missing days
+bad <- moods.per.day[moods.per.day$mood_label == 'bad',]
+bad[nrow(bad) + 1,] = list("bad","Thursday", 0)
+bad[nrow(bad) + 1,] = list("bad","Sunday", 0)
+
+p <- ggplot(bad, aes(x=weekday_label, y=n)) +
+  geom_bar(stat = 'identity', fill = '#e03a3a') +
+  labs(title="Number of entries of the mood \"bad\" by weekday",
+       subtitle = "From a total of 11 entries") +
+  xlab('Weekday') + ylab('Number of entries') +
+  bbc_style() +
+  theme(axis.title = element_text(size = 20), 
+        plot.margin = unit(c(1.0,1.5,1.0,1.0), 'cm'),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.position = 'none')
+print(p)
+ggsave(p, filename = '../plots/figure_21.jpg', 
+           width = 15, height = 8, units = 'in')
+```
+
+
+```{r}
+# Activities per day
+ activities.per.day <- rowSums(df[,9:ncol(df) - 1])
+mean(activities.per.day)
+median(activities.per.day)
+```
+
+
+
